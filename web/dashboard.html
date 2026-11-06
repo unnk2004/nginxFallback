@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard · Skynet Sync</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0c10;color:#eef2ff;font-family:'Inter',-apple-system,system-ui,sans-serif;line-height:1.5;padding:2rem 1rem}
+main{max-width:900px;margin:0 auto}
+header{display:flex;align-items:center;gap:1rem;margin-bottom:2rem}
+.logo{font-family:'Orbitron',monospace;letter-spacing:3px;color:#9fa8da;flex:1}
+#who{font-size:.85rem;color:#8b90a0}
+section{background:#111317;border:1px solid #23262e;border-radius:20px;padding:1.4rem;margin-bottom:1.2rem}
+h2{font-size:1.1rem;font-weight:500;margin-bottom:.8rem}
+h2 small{color:#74c69d;font-size:.75rem;margin-left:.5rem}
+p{font-size:.85rem;color:#b0b5c2;margin-bottom:.8rem}
+button{font-family:inherit;font-size:.85rem;font-weight:600;border:none;border-radius:40px;padding:.55rem 1.2rem;cursor:pointer;color:#fff;background:#2d6a4f}
+button:hover{background:#1f543e}
+button.ghost{background:transparent;border:1px solid #2c2f38;color:#9ca3af}
+code{display:block;background:#1a1d24;border-radius:10px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:.8rem;color:#a3b3a6;word-break:break-all}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{padding:.5rem .6rem;text-align:left;vertical-align:top}
+th{color:#9ca3af;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:500}
+tbody td{border-top:1px solid #1f2128}
+td.data{font-family:monospace;color:#a3b3a6;font-size:.75rem;word-break:break-all}
+.on{color:#74c69d}.off{color:#6c727f}
+</style>
+</head>
+<body>
+<main>
+<header><b class="logo">SKYNET SYNC</b><span id="who"></span><button class="ghost" id="out">Sign out</button></header>
+<section>
+<h2>API key</h2>
+<p id="keyinfo"></p>
+<code id="key" hidden></code>
+<button id="gen"></button>
+</section>
+<section>
+<h2>Nodes<small id="cnt"></small></h2>
+<div class="wrap"><table>
+<thead><tr><th>Node</th><th>Last seen</th><th>Latest data</th></tr></thead>
+<tbody id="rows"></tbody>
+</table></div>
+</section>
+</main>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+
+function post(url) {
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: '{}' });
+}
+
+function ago(ts) {
+    var s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+    if (s < 90) return s + ' s ago';
+    if (s < 5400) return Math.round(s / 60) + ' min ago';
+    return Math.round(s / 3600) + ' h ago';
+}
+
+function render(d) {
+    $('who').textContent = d.email;
+    $('cnt').textContent = d.nodes.length + ' / ' + d.max_nodes;
+    if ($('key').hidden) {
+        $('keyinfo').textContent = d.has_key
+            ? 'A key is active. It cannot be shown again; generating a new one revokes the old key.'
+            : 'No key yet. Generate one and put it into the firmware config.';
+    }
+    $('gen').textContent = d.has_key ? 'Regenerate key' : 'Generate key';
+    var body = $('rows');
+    body.textContent = '';
+    if (!d.nodes.length) {
+        var tr = body.insertRow(), td = tr.insertCell();
+        td.colSpan = 3;
+        td.className = 'off';
+        td.textContent = 'No nodes yet. They appear after the first telemetry request.';
+    }
+    d.nodes.forEach(function (n) {
+        var tr = body.insertRow();
+        tr.insertCell().textContent = n.name;
+        var seen = tr.insertCell();
+        seen.textContent = ago(n.seen);
+        seen.className = Date.now() / 1000 - n.seen < 120 ? 'on' : 'off';
+        var c = tr.insertCell();
+        c.className = 'data';
+        c.textContent = JSON.stringify(n.data);
+    });
+}
+
+function load() {
+    fetch('/api/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.status === 401) { location.href = '/'; return null; }
+        return r.json();
+    }).then(function (d) { if (d) render(d); }).catch(function () {});
+}
+
+$('gen').onclick = function () {
+    if (!confirm('The previous key (if any) stops working. Continue?')) return;
+    post('/api/key').then(function (r) { return r.json(); }).then(function (d) {
+        if (d.api_key) {
+            $('key').textContent = d.api_key;
+            $('key').hidden = false;
+            $('keyinfo').textContent = 'Copy the key now, it is shown only once.';
+            $('gen').textContent = 'Regenerate key';
+        }
+    });
+};
+
+$('out').onclick = function () {
+    post('/api/auth/logout').then(function () { location.href = '/'; });
+};
+
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
